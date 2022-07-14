@@ -6,6 +6,7 @@ from gan_training.models import (
     resnet2,
     resnet3,
     resnet4,
+    wgan,
 )
 
 generator_dict = {
@@ -16,6 +17,7 @@ generator_dict = {
     'resnet2': resnet2.Generator,
     'resnet3': resnet3.Generator,
     'resnet4': resnet4.Generator,
+    'wgan': wgan.Generator,
 }
 
 discriminator_dict = {
@@ -26,4 +28,5 @@ discriminator_dict = {
     'resnet2': resnet2.Discriminator,
     'resnet3': resnet3.Discriminator,
     'resnet4': resnet4.Discriminator,
+    'wgan': wgan.Discriminator,
 }

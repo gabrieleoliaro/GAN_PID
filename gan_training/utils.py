@@ -10,18 +10,26 @@ def save_images(imgs, outfile, nrow=8):
     torchvision.utils.save_image(imgs, outfile, nrow=nrow)
 
 
-def get_nsamples(data_loader, N):
+def get_nsamples(data_loader, N, need_y=True):
     x = []
-    y = []
+    if need_y:
+        y = []
     n = 0
     while n < N:
-        x_next, y_next = next(iter(data_loader))
+        if need_y:
+            x_next, y_next = next(iter(data_loader))
+            y.append(y_next)
+        else:
+            x_next= next(iter(data_loader))
         x.append(x_next)
-        y.append(y_next)
         n += x_next.size(0)
     x = torch.cat(x, dim=0)[:N]
-    y = torch.cat(y, dim=0)[:N]
-    return x, y
+    if need_y:
+        y = torch.cat(y, dim=0)[:N]
+    if need_y:
+        return x, y
+    else:
+        return x
 
 
 def update_average(model_tgt, model_src, beta):

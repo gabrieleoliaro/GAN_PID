@@ -10,17 +10,17 @@ Dependencies
 
 The dataset will be downloaded automatically for CIFAR10. For CelebA, please refer to the official website.
 
-For toy Data, 'python train_toy.py ./config/Mog_pid.yaml'.
+For toy Data, 'python3 train_toy.py ./configs/Mog_pid.yaml'.
 For CIFAR10 and celebA, the baseline can be reproduced by the following: 
 
-'python train.py ./config/cifar_pid.yaml'
+'python3 train.py ./configs/cifar_pid.yaml'
 
-'python train.py ./config/celeba_pid.yaml'
+'python3 train.py ./configs/celeba_pid.yaml'
 
 For our proposed method, use the following commands:
 
-'python train_pid.py ./config/cifar_pid.yaml'
+'python3 train_pid.py ./configs/cifar_pid.yaml'
 
-'python train_pid.py ./config/celeba_pid.yaml'
+'python3 train_pid.py ./configs/celeba_pid.yaml'
 
-The hyperparameters can be adjusted in the corresponding config files. Specifically, the 'iv' denotes the coefficient for CLC.
+The hyperparameters can be adjusted in the corresponding configs files. Specifically, **the 'iv' denotes the coefficient for CLC.**

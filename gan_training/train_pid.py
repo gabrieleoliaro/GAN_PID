@@ -56,18 +56,28 @@ class Trainer(object):
         self.max0 = torch.nn.ReLU()
 
     def generator_trainstep(self, y, z):
-        assert (y.size(0) == z.size(0))
+        if self.config["generator"]["name"] != "wgan":
+            assert (y.size(0) == z.size(0))
         toggle_grad(self.generator, True)
         toggle_grad(self.discriminator, False)
         self.generator.train()
         self.discriminator.train()
         self.g_optimizer.zero_grad()
-
-        x_fake = self.generator(z, y)
-        d_fake = self.discriminator(x_fake, y)
+        if self.config["generator"]["name"] != "wgan":
+            # Feed z (a minimibatch of noise samples from the gaussian distro), together with y (image class labels) to the generator. The generator will output fake samples, i.e. x_fake are fake images!
+            x_fake = self.generator(z, y)
+            # classify generator output (x_fake) with the discriminator
+            d_fake = self.discriminator(x_fake, y)
+        else:
+            # Feed z (a minimibatch of noise samples from the gaussian distro), together with y (image class labels) to the generator. The generator will output fake samples, i.e. x_fake are fake images!
+            x_fake = self.generator(z)
+            # classify generator output (x_fake) with the discriminator
+            d_fake = self.discriminator(x_fake)
+        # compute G's loss using real labels as GT
         gloss = self.compute_loss(d_fake, 1, is_generator=True)
+        # compute G's gradients in backward pass
         gloss.backward()
-
+        # update G's parameters with an optimizer's step
         self.g_optimizer.step()
 
         return gloss.item()
@@ -80,47 +90,88 @@ class Trainer(object):
         self.discriminator.train()
         self.d_optimizer.zero_grad()
 
-        reg_d = self.config['training']['regularize_output_d']
-        d_real = self.discriminator(x_real, y)
-        dloss_real = self.compute_loss(d_real, 1) * self.pv
+        # we are applying PID control using three coefficients:
+        # - pv for the proportional control
+        # - iv for the integral control
+        # - dv for the derivative control
+
+        reg_d = self.config['training']['regularize_output_d'] # unused in CIFAR
+        # classify real image(s) (x_real) with the discriminator
+        if self.config["discriminator"]["name"] != "wgan":
+            d_real = self.discriminator(x_real, y)
+        else:
+            d_real = self.discriminator(x_real)
+        # compute D's loss using real labels as GT
+        dloss_real = self.compute_loss(d_real, 1) * self.pv # P in PID applied here
+        
+        # unused in CIFAR, no need to worry
         if reg_d > 0.:
             dloss_real += (d_real**2).mean() * reg_d
+        # compute D's gradients in backward pass
         dloss_real.backward()
 
         # On fake data
+        # Feed a minibatch of noise samples to the generator, to generate a fake sample from the given class
         with torch.no_grad():
-            x_fake = self.generator(z, y)
-
-        d_fake = self.discriminator(x_fake, y)
+            if self.config["discriminator"]["name"] != "wgan":
+                x_fake = self.generator(z, y) # apply the generator to obtain a fake image from the class we are working on. I guess this should be the only way to call the generator, right? Because it wouldn't make sense to call the generator on real data.
+            else:
+                x_fake = self.generator(z)
+        # classify generator output (x_fake) with the discriminator
+        if self.config["discriminator"]["name"] != "wgan":
+            d_fake = self.discriminator(x_fake, y)
+        else:
+            d_fake = self.discriminator(x_fake)
+        # compute G's loss using real labels as GT, then multiply by the P proportional coefficient
         dloss_fake = self.compute_loss(d_fake, 0) * self.pv
         if reg_d > 0.:
             dloss_fake += (d_fake**2).mean() * reg_d
+        # compute G's gradients in backward pass
         dloss_fake.backward()
 
         i_loss = torch.from_numpy(np.array([0.]))
         if self.iv > 0:
             # i_factor = self.config['training']['i_buffer_factor']
             # i_store = self.config['training']['i_buffer_onestep']
-            xtmp = x_real.detach().cpu().numpy()
-            ytmp = y.detach().cpu().numpy()
-            self.i_real_queue.set_data(xtmp, ytmp)
+            if self.config["discriminator"]["name"] != "wgan":
+                xtmp = x_real.detach().cpu().numpy()
+                ytmp = y.detach().cpu().numpy()
+                self.i_real_queue.set_data(xtmp, ytmp)
 
-            xtmp = x_fake.detach().cpu().numpy()
-            ytmp = y.detach().cpu().numpy()
-            self.i_fake_queue.set_data(xtmp, ytmp)
+                xtmp = x_fake.detach().cpu().numpy()
+                ytmp = y.detach().cpu().numpy()
+                self.i_fake_queue.set_data(xtmp, ytmp)
 
-            i_xreal, i_yreal = self.i_real_queue.get_data()
-            i_xfake, i_yfake = self.i_fake_queue.get_data()
+                i_xreal, i_yreal = self.i_real_queue.get_data()
+                i_xfake, i_yfake = self.i_fake_queue.get_data()
 
-            i_xreal = torch.as_tensor(i_xreal, dtype=torch.float32).cuda()
-            i_xfake = torch.as_tensor(i_xfake, dtype=torch.float32).cuda()
-            i_yreal = torch.as_tensor(i_yreal, dtype=torch.long).cuda()
-            i_yfake = torch.as_tensor(i_yfake, dtype=torch.long).cuda()
+                i_xreal = torch.as_tensor(i_xreal, dtype=torch.float32).cuda()
+                i_xfake = torch.as_tensor(i_xfake, dtype=torch.float32).cuda()
+                i_yreal = torch.as_tensor(i_yreal, dtype=torch.long).cuda()
+                i_yfake = torch.as_tensor(i_yfake, dtype=torch.long).cuda()
+            else:
+                xtmp = x_real.detach().cpu().numpy()
+                self.i_real_queue.set_data(xtmp)
+                xtmp = x_fake.detach().cpu().numpy()
+                self.i_fake_queue.set_data(xtmp)
 
-            i_real_doutput = self.discriminator(i_xreal, i_yreal)
-            i_loss_real = self.compute_loss(i_real_doutput, 1)
-            i_fake_doutput = self.discriminator(i_xfake, i_yfake)
-            i_loss_fake = self.compute_loss(i_fake_doutput, 0)
+                i_xreal = self.i_real_queue.get_data()
+                i_xfake = self.i_fake_queue.get_data()
+
+                i_xreal = torch.as_tensor(i_xreal, dtype=torch.float32).cuda()
+                i_xfake = torch.as_tensor(i_xfake, dtype=torch.float32).cuda()
+                
+
+            if self.config["discriminator"]["name"] != "wgan":
+                i_real_doutput = self.discriminator(i_xreal, i_yreal)
+                i_loss_real = self.compute_loss(i_real_doutput, 1)
+                i_fake_doutput = self.discriminator(i_xfake, i_yfake)
+                i_loss_fake = self.compute_loss(i_fake_doutput, 0)
+            else:
+                i_real_doutput = self.discriminator(i_xreal)
+                i_loss_real = self.compute_loss(i_real_doutput, 1)
+                i_fake_doutput = self.discriminator(i_xfake)
+                i_loss_fake = self.compute_loss(i_fake_doutput, 0)
 
             if self.config['training']['pid_type'] == 'function':
                 i_loss = (i_loss_real + i_loss_fake) * self.iv
@@ -143,12 +194,19 @@ class Trainer(object):
                 self.d_xreal = x_real
                 self.d_xfake = x_fake
                 self.d_previous_z = z
-                self.d_previous_y = y
+                if self.config["discriminator"]["name"] != "wgan":
+                    self.d_previous_y = y
             else:
-                d_loss_previous_f = self.compute_loss(
-                    self.discriminator(self.d_xfake, self.d_previous_y), 0)
-                d_loss_previous_r = self.compute_loss(
-                    self.discriminator(self.d_xreal, self.d_previous_y), 1)
+                if self.config["discriminator"]["name"] != "wgan":
+                    d_loss_previous_f = self.compute_loss(
+                        self.discriminator(self.d_xfake, self.d_previous_y), 0)
+                    d_loss_previous_r = self.compute_loss(
+                        self.discriminator(self.d_xreal, self.d_previous_y), 1)
+                else:
+                    d_loss_previous_f = self.compute_loss(
+                        self.discriminator(self.d_xfake), 0)
+                    d_loss_previous_r = self.compute_loss(
+                        self.discriminator(self.d_xreal), 1)
                 d_loss_previous = d_loss_previous_f + d_loss_previous_r
 
                 d_loss_current_f = self.compute_loss(
@@ -163,7 +221,8 @@ class Trainer(object):
                 self.d_xreal = x_real
                 self.d_xfake = x_fake
                 self.d_previous_z = z
-                self.d_previous_y = y
+                if self.config["discriminator"]["name"] != "wgan":
+                    self.d_previous_y = y
 
         self.d_optimizer.step()
         toggle_grad(self.discriminator, False)
