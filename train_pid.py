@@ -40,6 +40,7 @@ args = parser.parse_args()
 
 config = load_config(args.config, 'configs/default.yaml')
 is_cuda = (torch.cuda.is_available() and not args.no_cuda)
+print("CUDA: ", is_cuda)
 
 # Short hands
 batch_size = config['training']['batch_size']
@@ -67,12 +68,15 @@ checkpoint_io = CheckpointIO(checkpoint_dir=checkpoint_dir)
 device = torch.device("cuda:0" if is_cuda else "cpu")
 
 # Dataset
+# get_dataset just returns the list of images (or other data) transformed/pre-processed as desired, and the number of labels (e.g. image types)
+# for example, for the CIFAR-10 dataset, which contains images from 10 classes, we have nlabels=10
 train_dataset, nlabels = get_dataset(
     name=config['data']['type'],
     data_dir=config['data']['train_dir'],
     size=config['data']['img_size'],
     lsun_categories=config['data']['lsun_categories_train'],
     config=config)
+# This just creates the DataLoader object from the dataset
 train_loader = torch.utils.data.DataLoader(
     train_dataset,
     batch_size=batch_size,
@@ -111,7 +115,9 @@ checkpoint_io.register_modules(
 )
 
 # Get model file
+# FOR CIFAR, this is not available
 model_file = config['training']['model_file']
+print("model_file: ", model_file)
 
 # Logger
 logger = Logger(log_dir=path.join(out_dir, 'logs'),
@@ -128,9 +134,15 @@ zdist = get_zdist(config['z_dist']['type'],
                   device=device)
 
 ntest = batch_size
-x_real_test, ytest = utils.get_nsamples(train_loader, ntest)
-ytest.clamp_(None, nlabels - 1)
-ztest = zdist.sample((ntest, ))
+if config["discriminator"]["name"] != "wgan":
+    x_real_test, ytest = utils.get_nsamples(train_loader, ntest)
+    ytest.clamp_(None, nlabels - 1)
+    ztest = zdist.sample((ntest, ))
+else:
+    x_real_test = utils.get_nsamples(train_loader, ntest, need_y=False)
+    ytest = None
+    ztest = torch.randn(ntest, 100, 1, 1)
+
 utils.save_images(x_real_test, path.join(out_dir, 'real.png'))
 
 # Test generator
@@ -145,7 +157,8 @@ evaluator = Evaluator(generator_test,
                       zdist,
                       ydist,
                       batch_size=batch_size,
-                      device=device)
+                      device=device,
+                      generator_type=config["generator"]["name"])
 
 # Train
 tstart = t0 = time.time()
@@ -195,30 +208,46 @@ while epoch_idx < 1600:
     epoch_idx += 1
     print('Start epoch %d...' % epoch_idx)
 
-    for x_real, y in train_loader:
+    # x_real is a real image sampled from input dataset. y is the real class assignment!
+    for tuple in train_loader:
+        if config["discriminator"]["name"] != "wgan":
+            x_real, y = tuple
+        else:
+            x_real = tuple
         it += 1
         g_scheduler.step()
         d_scheduler.step()
-
+        
+        # learning rates for the generator and discriminator
         d_lr = d_optimizer.param_groups[0]['lr']
         g_lr = g_optimizer.param_groups[0]['lr']
         logger.add('learning_rates', 'discriminator', d_lr, it=it)
         logger.add('learning_rates', 'generator', g_lr, it=it)
-
-        x_real, y = x_real.to(device), y.to(device)
-        y.clamp_(None, nlabels - 1)
+        if config["discriminator"]["name"] != "wgan":
+            x_real, y = x_real.to(device), y.to(device)
+            y.clamp_(None, nlabels - 1)
+        else:
+            x_real = x_real.to(device)
 
         # Discriminator updates
-        z = zdist.sample((batch_size, ))
-        dloss, dl, il = trainer.discriminator_trainstep(x_real, y, z, it)
+        #z = zdist.sample((batch_size, ))
+        z = torch.randn(batch_size, 100, 1, 1)
+        if config["discriminator"]["name"] != "wgan":
+            dloss, dl, il = trainer.discriminator_trainstep(x_real, y, z, it)
+        else:
+            dloss, dl, il = trainer.discriminator_trainstep(x_real, None, z, it)
         logger.add('losses', 'discriminator', dloss, it=it)
         logger.add('losses', 'd_loss', dl, it=it)
         logger.add('losses', 'i_loss', il, it=it)
 
         # Generators updates
         if ((it + 1) % d_steps) == 0:
-            z = zdist.sample((batch_size, ))
-            gloss = trainer.generator_trainstep(y, z)
+            #z = zdist.sample((batch_size, ))
+            z = torch.randn(batch_size, 100, 1, 1)
+            if config["discriminator"]["name"] != "wgan":
+                gloss = trainer.generator_trainstep(y, z)
+            else:
+                gloss = trainer.generator_trainstep(None, z)
             logger.add('losses', 'generator', gloss, it=it)
 
             if config['training']['take_model_average']:

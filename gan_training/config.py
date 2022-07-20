@@ -58,18 +58,22 @@ def update_recursive(dict1, dict2):
 
 def build_models(config):
     # Get classes
+    # The dictionary belows map the name of each model to use to the actual Class. For CIFAR-Pid, we use resnet1 for both the generator and the discriminator
     Generator = generator_dict[config['generator']['name']]
     Discriminator = discriminator_dict[config['discriminator']['name']]
-
-    # Build models
-    generator = Generator(z_dim=config['z_dist']['dim'],
-                          nlabels=config['data']['nlabels'],
-                          size=config['data']['img_size'],
-                          **config['generator']['kwargs'])
-    discriminator = Discriminator(config['z_dist']['dim'],
-                                  nlabels=config['data']['nlabels'],
-                                  size=config['data']['img_size'],
-                                  **config['discriminator']['kwargs'])
+    if config['generator']['name'] != "wgan":
+        # Build models
+        generator = Generator(z_dim=config['z_dist']['dim'],
+                              nlabels=config['data']['nlabels'],
+                              size=config['data']['img_size'],
+                              **config['generator']['kwargs'])
+        discriminator = Discriminator(config['z_dist']['dim'],
+                                      nlabels=config['data']['nlabels'],
+                                      size=config['data']['img_size'],
+                                      **config['discriminator']['kwargs'])
+    else:
+        generator = Generator(config['data']['nchannels'])
+        discriminator = Discriminator(config['data']['nchannels'])
 
     return generator, discriminator
 

@@ -16,19 +16,22 @@ class Evaluator(object):
                  ydist,
                  batch_size=64,
                  inception_nsamples=60000,
-                 device=None):
+                 device=None,
+                 generator_type=None):
         self.generator = generator
         self.zdist = zdist
         self.ydist = ydist
         self.inception_nsamples = inception_nsamples
         self.batch_size = batch_size
         self.device = device
+        self.generator_type = generator_type
 
     def compute_inception_score(self):
         self.generator.eval()
         imgs = []
         while (len(imgs) < self.inception_nsamples):
-            ztest = self.zdist.sample((self.batch_size, ))
+            ztest = torch.randn(10000, 100, 1, 1)
+            #ztest = self.zdist.sample((self.batch_size, ))
             ytest = self.ydist.sample((self.batch_size, ))
 
             samples = self.generator(ztest, ytest)
@@ -54,7 +57,10 @@ class Evaluator(object):
             batch_size = z.size(0)
             # Parse y
             if y is None:
-                y = self.ydist.sample((batch_size, ))
+                if self.generator_type == "wgan":
+                    y = torch.randn(batch_size, 100, 1, 1)
+                else:
+                    y = self.ydist.sample((batch_size, ))
             elif isinstance(y, int):
                 y = torch.full((batch_size, ),
                                y,
@@ -62,15 +68,24 @@ class Evaluator(object):
                                dtype=torch.int64)
             # Sample x
             with torch.no_grad():
-                x = self.generator(z, y)
+                if self.generator_type != "wgan":
+                    x = self.generator(z, y)
+                else:
+                    x = self.generator(z)
             return x
         else:
             self.generator.eval()
-            z_sample = self.zdist.sample((10000, ))
-            y_sample = self.ydist.sample((10000, ))
-            y_sample = torch.clamp(y_sample, None, 0)
+            if self.generator_type == "wgan":
+                z_sample = torch.randn(10000, 100, 1, 1)
+            else:
+                z_sample = self.zdist.sample((10000, ))
+                y_sample = self.ydist.sample((10000, ))
+                y_sample = torch.clamp(y_sample, None, 0)
             with torch.no_grad():
-                x_fake = self.generator(z_sample, y_sample)
+                if self.generator_type != "wgan":
+                    x_fake = self.generator(z_sample, y_sample)
+                else:
+                    x_fake = self.generator(z_sample)
 
             np_samples_data = x_real.data.cpu().numpy()
             np_samples_gen = x_fake.data.cpu().numpy()

@@ -86,6 +86,12 @@ def get_dataset(name, data_dir, size=64, lsun_categories=None, config=None):
         transforms.Lambda(lambda x: x + 1. / 128 * torch.rand(x.size())),
     ])
 
+    trans = transforms.Compose([
+        transforms.Resize(32),
+        transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+    ])  
+
     if name == "MoG":
         dataset = MixtureOfGaussianDataset(config)
         nlabels = 1
@@ -102,11 +108,23 @@ def get_dataset(name, data_dir, size=64, lsun_categories=None, config=None):
         dataset = datasets.DatasetFolder(data_dir, npy_loader, 'npy')
         nlabels = len(dataset.classes)
     elif name == 'cifar10':
+        nlabels = 10
         dataset = datasets.CIFAR10(root=data_dir,
                                    train=True,
                                    download=True,
                                    transform=transform)
-        nlabels = 10
+        if config:
+            if config["discriminator"]["name"] == "wgan":
+                class RemoveLabelDataset(torch.utils.data.Dataset):
+                    def __init__(self, dataset):
+                        self.dataset = dataset
+                    
+                    def __getitem__(self, index):
+                        return self.dataset[index][0]
+                    def __len__(self):
+                        return len(self.dataset)
+                dataset = RemoveLabelDataset(dataset)
+        
     elif name == 'lsun':
         if lsun_categories is None:
             lsun_categories = 'train'
