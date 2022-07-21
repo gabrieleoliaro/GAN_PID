@@ -5,6 +5,7 @@ data:
   lsun_categories_train: bedroom_train
   lsun_categories_test: bedroom_test
   img_size: 32
+  nchannels: 3
 generator:
   name: wgan # resnet1 # fix it to 1: the normal resnet
   # kwargs:
@@ -35,7 +36,7 @@ training:
   lr_g: 0.0001
   lr_d: 0.0001
   out_dir: output/
-  out_basename: cifar_wgan_pid_
+  out_basename: cifar_wgan_pid
   pid_type: square
   backup_every: 10000
   inception_every: 10000
