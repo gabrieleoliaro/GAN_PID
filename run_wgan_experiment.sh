@@ -4,7 +4,7 @@
 timeout 5h python3 train_pid.py configs/cifar_pid0.yaml
 
 # WGAN with PID, Integral component 0.1
-timeout 5h python3 train_pid.py configs/cifar_pid0.1yaml
+timeout 5h python3 train_pid.py configs/cifar_pid0.1.yaml
 
 # WGAN with PID, Integral component 0.1
 timeout 5h python3 train_pid.py configs/cifar_pid1.yaml
