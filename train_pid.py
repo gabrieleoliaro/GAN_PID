@@ -204,7 +204,7 @@ trainer = Trainer(generator,
 
 # Training loop
 print('Start training...')
-while epoch_idx < 1600:
+while epoch_idx < 2:
     epoch_idx += 1
     print('Start epoch %d...' % epoch_idx)
 

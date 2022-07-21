@@ -36,7 +36,7 @@ training:
   lr_g: 0.0001
   lr_d: 0.0001
   out_dir: output/
-  out_basename: cifar_wgan_pid
+  out_basename: cifar_wgan_pid1
   pid_type: square
   backup_every: 10000
   inception_every: 10000
